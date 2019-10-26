@@ -1,7 +1,7 @@
 {
   "name": "TDT FTCLib",
   "description": "A command based control framework inspired by FRC WPILib",
-  "export": "org.tdt.ftclib",
+  "export": "org.tdt2845.ftclib",
   "dependencies": {
   }
 }
