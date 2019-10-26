@@ -1,0 +1,143 @@
+import io.github.httpbuilderng.http.HttpTask
+
+plugins {
+    id 'java'
+    id "io.github.http-builder-ng.http-plugin" version "0.1.1"
+    id "de.undercouch.download" version "4.0.0"
+}
+group 'org.firstinspires.ftc.teamcode'
+version '1.0-SNAPSHOT'
+
+sourceCompatibility = 1.8
+
+repositories {
+//    mavenCentral()
+    jcenter()
+    maven {
+        url "https://plugins.gradle.org/m2/"
+    }
+}
+
+def APP_URI = 'http://192.168.49.1:8080' //TODO: Change this URL to match the address specified in the Robot Controller or Driverstation App
+http {
+    library = 'apache'
+    config {
+        request.uri = APP_URI
+    }
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+}
+
+task wipeLocalCode(type: Delete) {
+    delete 'src/main/java/org'
+}
+task wipeLocalLibs(type: Delete) {
+    delete 'libs/android.jar', 'libs/onbotjava-classes.jar'
+}
+
+task downloadZipFile(type: Download) {
+    src APP_URI+"/java/file/download?f=/src/org/"
+    dest new File(buildDir, 'code.zip')
+}
+
+task downloadRootZip(type: Download) {
+    src APP_URI+"/java/file/download?f=/"
+    dest new File(buildDir, 'lib.zip')
+}
+
+task unzipRoot(dependsOn: downloadRootZip, type: Copy) {
+    from zipTree(downloadRootZip.dest)
+    into buildDir
+}
+
+task pullCode(dependsOn: unzipRoot, type: Copy) {
+    from "${buildDir}/src/org"
+    into 'src/main/java/org'
+}
+
+task pullLibs(dependsOn: unzipRoot, type: Copy) {
+    from "${buildDir}/lib"
+    into 'libs'
+}
+
+task resetLocal(type: GradleBuild) {
+    tasks = ['wipeLocalCode', 'wipeLocalLibs']
+}
+
+task cleanPull(type: GradleBuild) {
+    tasks = ['clean', 'resetLocal', 'pullCode', 'pullLibs']
+}
+
+task pull(type: GradleBuild) {
+    tasks = ['wipeLocalCode', 'pullCode', 'pullLibs']
+}
+
+
+
+task wipe(type: HttpTask) {
+    def files = ['/src/org']
+//    config {
+//        request.uri = 'http://192.168.1.8:8080'
+//    }
+    post {
+        request.uri.path = '/java/file/delete'
+        request.contentType = 'application/x-www-form-urlencoded'
+        request.body = [delete: '["/src/"]']
+        response.success { data, body ->
+            println(body)
+        }
+    }
+}
+
+task push(type: HttpTask) {
+    fileTree('src/main/java/').matching { include "**/*.java" }.each { file ->
+        println(file.path-(rootDir.path+'/src/main/java/'))
+        post {
+            request.uri.path = "/java/file/save"
+            request.uri.query = [f: "/src/${file.path-(rootDir.path+'/src/main/java/')}"]
+            request.contentType = 'application/x-www-form-urlencoded'
+            request.body =[data: file.text]
+            response.success { res, body ->
+                println('SUCCESS: ')
+                println body
+            }
+            response.failure { err, body ->
+                println('FAILURE: ')
+                println(body)
+            }
+            response.exception { e ->
+                println('EXCEPTION: ')
+                println(e)
+            }
+        }
+    }
+
+}
+
+task remoteBuild(type: HttpTask) {
+    get {
+        request.uri.path = '/java/build/start'
+        response.success { data, body ->
+            println 'Build Started'
+        }
+    }
+    get {
+        request.uri.path = '/java/build/wait'
+        response.success { arg, body ->
+            project.logger.error body
+        }
+    }
+    get {
+        request.uri.path = '/java/build/status'
+        response.success { data, body ->
+            println(body)
+        }
+    }
+}
+
+task everything(type: GradleBuild) {
+    tasks = ['wipe', 'push', 'remoteBuild']
+}
